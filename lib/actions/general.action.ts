@@ -141,18 +141,23 @@ export async function getLatestInterviews(
   if (!userId) return [];
 
   try {
-    const interviews = await db
+    const querySnapshot = await db
       .collection("interviews")
-      .orderBy("createdAt", "desc")
       .where("finalized", "==", true)
-      .where("userId", "!=", userId)
-      .limit(limit)
       .get();
 
-    return interviews.docs.map((doc) => ({
+    let interviews = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as Interview[];
+
+    // Filter out user's own interviews and sort by date descending
+    interviews = interviews
+      .filter((interview) => interview.userId !== userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+
+    return interviews;
   } catch (error) {
     console.error("Error fetching latest interviews:", error);
     return [];
@@ -165,16 +170,20 @@ export async function getInterviewsByUserId(
   if (!userId) return [];
 
   try {
-    const interviews = await db
+    const querySnapshot = await db
       .collection("interviews")
       .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
       .get();
 
-    return interviews.docs.map((doc) => ({
+    const interviews = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as Interview[];
+
+    // Sort in memory to avoid Firestore index requirement
+    return interviews.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   } catch (error) {
     console.error("Error fetching user interviews:", error);
     return [];
