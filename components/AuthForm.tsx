@@ -6,8 +6,10 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { auth } from "@/firebase/client";
 import { useForm } from "react-hook-form";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 
 import {
   createUserWithEmailAndPassword,
@@ -30,6 +32,9 @@ const authFormSchema = (type: FormType) => {
 
 const AuthForm = ({ type }: { type: FormType }) => {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const isSignIn = type === "sign-in";
 
   const formSchema = authFormSchema(type);
   const form = useForm<z.infer<typeof formSchema>>({
@@ -42,6 +47,7 @@ const AuthForm = ({ type }: { type: FormType }) => {
   });
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    setIsLoading(true);
     try {
       if (type === "sign-up") {
         const { name, email, password } = data;
@@ -89,13 +95,25 @@ const AuthForm = ({ type }: { type: FormType }) => {
         toast.success("Signed in successfully.");
         router.push("/");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log(error);
-      toast.error(`There was an error: ${error}`);
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      if (error?.code === "auth/email-already-in-use") {
+        errorMessage = "An account with this email already exists.";
+      } else if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password" || error?.code === "auth/user-not-found") {
+        errorMessage = "Invalid email or password.";
+      } else if (error?.code === "auth/weak-password") {
+        errorMessage = "Password is too weak. Please use a stronger password.";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isSignIn = type === "sign-in";
+
 
   return (
     <div className="card-border lg:min-w-[566px]">
@@ -138,8 +156,17 @@ const AuthForm = ({ type }: { type: FormType }) => {
               type="password"
             />
 
-            <Button className="btn" type="submit">
-              {isSignIn ? "Sign In" : "Create an Account"}
+            <Button className="btn" type="submit" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Please wait
+                </>
+              ) : isSignIn ? (
+                "Sign In"
+              ) : (
+                "Create an Account"
+              )}
             </Button>
           </form>
         </Form>

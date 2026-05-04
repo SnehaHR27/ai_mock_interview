@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 
 export async function POST(request: Request) {
-  const { action, role, level, type, techstack, amount, question, answer } =
+  const { action, role, level, type, techstack, amount, question, answer, imageBase64 } =
     await request.json();
 
   try {
@@ -47,14 +47,18 @@ export async function POST(request: Request) {
       let feedback;
 
       try {
-        const { text } = await generateText({
-          model: google("gemini-2.0-flash-001"),
-          prompt: `You are an expert ${role} interviewer and interview coach evaluating a ${level || "Junior"} candidate.
+        const messages: any[] = [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `You are an expert ${role} interviewer and interview coach evaluating a ${level || "Junior"} candidate.
 
 Question asked: "${question}"
 Candidate's answer: "${answer}"
 
-Analyze both the CONTENT (what they said) and BEHAVIOR (how they communicated — clarity, structure, confidence based on text).
+Analyze both the CONTENT (what they said) and BEHAVIOR (how they communicated — clarity, structure, confidence based on text${imageBase64 ? " AND visual body language from the provided camera snapshot" : ""}).
 
 Return ONLY valid JSON in this exact format with no extra text:
 {
@@ -74,7 +78,22 @@ Return ONLY valid JSON in this exact format with no extra text:
   ],
   "idealAnswer": "<A concise model answer in 3-4 sentences that shows what an excellent response looks like>",
   "encouragement": "<One short encouraging sentence to motivate the candidate>"
-}`,
+}`
+              }
+            ]
+          }
+        ];
+
+        if (imageBase64) {
+          messages[0].content.push({
+            type: "image",
+            image: Buffer.from(imageBase64, "base64"),
+          });
+        }
+
+        const { text } = await generateText({
+          model: google("gemini-2.0-flash-001"),
+          messages,
         });
 
         // Strip markdown code block if present
@@ -82,7 +101,7 @@ Return ONLY valid JSON in this exact format with no extra text:
         feedback = JSON.parse(cleaned);
       } catch (aiError) {
         console.log("AI evaluation failed, using fallback:", aiError);
-        feedback = generateLocalFeedback(answer);
+        feedback = generateLocalFeedback(answer, !!imageBase64);
       }
 
       return Response.json(
@@ -500,11 +519,12 @@ function generateLocalQuestions(
 }
 
 // ── Fallback: local answer evaluation ────────────────────────────
-function generateLocalFeedback(answer: string) {
+function generateLocalFeedback(answer: string, hasCamera: boolean = false) {
   const wordCount = (answer || "").split(/\s+/).filter(Boolean).length;
+  let fb: any;
 
   if (wordCount < 10) {
-    return {
+    fb = {
       score: 3,
       rating: "Needs Improvement",
       behaviorTips: [
@@ -522,7 +542,7 @@ function generateLocalFeedback(answer: string) {
         "Don't worry — practice makes perfect! Try again with more detail.",
     };
   } else if (wordCount < 30) {
-    return {
+    fb = {
       score: 5,
       rating: "Average",
       behaviorTips: [
@@ -543,7 +563,7 @@ function generateLocalFeedback(answer: string) {
         "You're on the right track — just go deeper with specifics next time!",
     };
   } else {
-    return {
+    fb = {
       score: 7,
       rating: "Good",
       behaviorTips: [
@@ -565,6 +585,14 @@ function generateLocalFeedback(answer: string) {
         "Strong answer! A small polish and this will be interview-ready.",
     };
   }
+
+  if (hasCamera) {
+    fb.behaviorTips.push(
+      "Camera feedback: You maintained decent eye contact, but try to sit up straighter to project more visual confidence."
+    );
+  }
+
+  return fb;
 }
 
 export async function GET() {

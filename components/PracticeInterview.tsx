@@ -128,6 +128,12 @@ const PracticeInterview = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Use a ref to track the latest user input so speech recognition can append to it
+  const userInputRef = useRef(userInput);
+  useEffect(() => {
+    userInputRef.current = userInput;
+  }, [userInput]);
+
   // ── Check voice support on mount ──────────────────────────
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -165,24 +171,28 @@ const PracticeInterview = () => {
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
+    // Save whatever text was already in the input box before we started listening
+    const currentText = userInputRef.current || "";
+    const initialText = currentText ? currentText + (currentText.endsWith(" ") ? "" : " ") : "";
     let finalTranscript = "";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = "";
-      for (let i = event.resultIndex; i < Object.keys(event.results).length; i++) {
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         if (result && result[0]) {
           const transcript = result[0].transcript;
-          // Check if this result is final (has isFinal property)
-          const isFinal = (result as unknown as { isFinal: boolean }).isFinal;
+          const isFinal = (result as any).isFinal;
           if (isFinal) {
             finalTranscript += transcript + " ";
           } else {
-            interim = transcript;
+            interim += transcript;
           }
         }
       }
-      setUserInput(finalTranscript + interim);
+      
+      setUserInput(initialText + finalTranscript + interim);
     };
 
     recognition.onerror = (event) => {
@@ -373,6 +383,21 @@ const PracticeInterview = () => {
     setUserInput("");
     setIsEvaluating(true);
 
+    // Capture an image frame from the webcam if it's on
+    let imageBase64 = null;
+    if (webcamOn && videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx && canvas.width > 0 && canvas.height > 0) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        // Extract the base64 string without the "data:image/jpeg;base64," prefix
+        const dataUrl = canvas.toDataURL("image/jpeg");
+        imageBase64 = dataUrl.split(",")[1];
+      }
+    }
+
     // Thinking indicator
     const thinkingId = addMessage({ sender: "tutor", text: "Analyzing your answer...", isTyping: true });
 
@@ -386,6 +411,7 @@ const PracticeInterview = () => {
           level,
           question: questions[currentQ],
           answer: trimmed,
+          imageBase64,
         }),
       });
       const data = await res.json();
@@ -424,10 +450,11 @@ const PracticeInterview = () => {
       // Speak feedback, then read next question after speech finishes
       const nextQ = currentQ + 1;
       if (nextQ < questions.length) {
-        // Use a promise to wait for speech to finish
+        // Use a promise to wait for speech to finish or pause so user can read
         await new Promise<void>((resolve) => {
           if (!aiVoiceOn || typeof window === "undefined" || !window.speechSynthesis) {
-            resolve();
+            // Wait 4 seconds so the user can read the feedback before the next question starts
+            setTimeout(resolve, 4000);
             return;
           }
           window.speechSynthesis.cancel();
