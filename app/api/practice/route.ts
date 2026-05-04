@@ -104,6 +104,28 @@ Return ONLY valid JSON in this exact format with no extra text:
         feedback = generateLocalFeedback(answer, !!imageBase64);
       }
 
+      // ── Analyze filler words ──
+      const fillers = ["um", "uh", "like", "basically", "actually", "literally"];
+      const words = (answer || "").toLowerCase().split(/[\s,.-]+/);
+      let count = 0;
+      const used: Record<string, number> = {};
+
+      for (const w of words) {
+        if (fillers.includes(w)) {
+          count++;
+          used[w] = (used[w] || 0) + 1;
+        }
+      }
+
+      const youKnowMatches = (answer || "").toLowerCase().match(/you know/g);
+      if (youKnowMatches) {
+        count += youKnowMatches.length;
+        used["you know"] = (used["you know"] || 0) + youKnowMatches.length;
+      }
+
+      feedback.fillerWordsCount = count;
+      feedback.fillerWordsUsed = used;
+
       return Response.json(
         { success: true, feedback },
         { status: 200 }

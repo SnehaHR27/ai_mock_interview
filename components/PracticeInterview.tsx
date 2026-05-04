@@ -62,6 +62,8 @@ interface Feedback {
   corrections: string[];
   idealAnswer: string;
   encouragement: string;
+  fillerWordsCount?: number;
+  fillerWordsUsed?: Record<string, number>;
 }
 
 interface Message {
@@ -1011,6 +1013,25 @@ const FeedbackCard = ({ feedback, expanded = false }: { feedback: Feedback; expa
     </div>
 
     <div className="p-4 space-y-3">
+      {/* Speaking Fluency (Filler Words) */}
+      {feedback.fillerWordsCount !== undefined && feedback.fillerWordsCount > 0 && (
+        <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+          <p className="text-xs font-bold text-orange-400 mb-1.5 flex items-center gap-1">
+            🗣️ Speaking Fluency
+          </p>
+          <p className="text-xs text-light-100 mb-2">
+            You used <strong className="text-orange-400">{feedback.fillerWordsCount}</strong> filler word{feedback.fillerWordsCount === 1 ? "" : "s"}. Try pausing instead of filling the silence!
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(feedback.fillerWordsUsed || {}).map(([word, count]) => (
+              <span key={word} className="px-2 py-0.5 rounded-full bg-dark-200 border border-dark-100 text-[10px] text-light-400">
+                "{word}": <strong className="text-orange-400">{count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Behavioral Tips */}
       {feedback.behaviorTips?.length > 0 && (
         <div>
